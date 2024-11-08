@@ -24,7 +24,6 @@ from tests.integration_tests.cache.fake_embeddings import (
 
 TEST_KEYSPACE = "graph_test_keyspace"
 
-
 class ParserEmbeddings(Embeddings):
     """Parse input texts: if they are json for a List[float], fine.
     Otherwise, return all zeros and call it a day.
@@ -240,13 +239,12 @@ def graph_vector_store_d2(
 
 
 @pytest.fixture(scope="function")
-def populated_graph_vector_store_d2(
+def populated_graph_vector_store(
     graph_vector_store_d2: CassandraGraphVectorStore,
     graph_vector_store_docs: list[Document],
-) -> Generator[CassandraGraphVectorStore, None, None]:
-    graph_vector_store_d2.add_documents(graph_vector_store_docs)
-    yield graph_vector_store_d2
-
+) -> OpenSearchGraphVectorStore:
+    graph_vector_store.add_documents(graph_vector_store_docs)
+    return graph_vector_store
 
 def test_mmr_traversal(graph_vector_store_angular: CassandraGraphVectorStore) -> None:
     """ Test end to end construction and MMR search.

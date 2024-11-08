@@ -22,15 +22,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ContentGraph:
+    """A class used to represent a Content Graph.
+
+    Attributes:
+    name : str
+        The name of the content graph.
+    metadata : Optional[Dict[str, Union[str, int]]]
+    """
+    
     def __init__(
         self, name: str, metadata: Optional[Dict[str, Union[str, int]]] = None
     ) -> None:
-        """
-        Initializes a ContentGraph instance.
 
-        :param title: Title of the content graph.
-        :param metadata: Optional metadata dictionary with string keys and values that can be strings or integers.
-        """
         self.name: str = name
         self.graph: List[Document] = []  # Store nodes as LangChain Documents
         self.root: Document = None
@@ -59,6 +62,16 @@ class ContentGraph:
         return f"{self.__class__.__name__}({self.name})"
 
     def element_to_document(self, element: Element) -> Document:
+        """Converts an Element object to a Document object.
+
+        Args:
+            element (Element): The element to be converted.
+
+        Returns:
+            Document: A document object containing the id, page content, and metadata
+                      of the given element. The metadata includes the type of the element,
+                      an empty list of links, and any additional metadata from the element.
+        """
         return Document(
             id=element.id,
             page_content=element.text,
@@ -127,7 +140,47 @@ class ContentGraph:
                 break
 
         return None
+    def fromLangChainDocuments(
+        self,
+        documents: List[Document],
+        output_image_path: Path,
+        reset_graph: bool = False,
+        infer_hierarchy: bool = True,
+        deserialize_links: bool = False,
+    ) -> None:
+        """
+        Synchronously processes langchain Documents into a content graph.
 
+        :param pdf_path: The path to the PDF file.
+        :param pdf_path: The path to were images are stored.
+        """
+        logger.info("Creating content graph from existing langchain documents ...")
+        self.infer_hierarchy = infer_hierarchy
+        self.graph.clear() if reset_graph else None
+
+        self.infered_parent = self.root = Document(
+            id="root",
+            page_content=self.name,
+            metadata={"file_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+        )
+
+        self.graph.append(self.root)
+
+        for doc in documents:
+            try:
+                # Extract the element type from the class name
+                element_type = doc.metadata["type"]
+                doc = self.handle_hierarchy(element_type, doc)
+                self.graph.append(doc)
+
+            except Exception as e:
+                logger.error(
+                    f"An error occurred while processing element {doc.id}: {e}"
+                )
+                logger.error(e, exc_info=True)
+                break
+
+        return None
     def handle_formula(self, element: Element) -> None:
         doc = self.element_to_document(element)
         self.graph.append(self.add_hierarchy(doc))

@@ -51,34 +51,23 @@ def _serialize_links(links: list[Link]) -> str:
 
     return json.dumps(links, cls=SetAndLinkEncoder)
 
-
 def _deserialize_links(json_blob: str | None) -> set[Link]:
     return {
         Link(kind=link["kind"], direction=link["direction"], tag=link["tag"])
         for link in cast(list[dict[str, Any]], json.loads(json_blob or "[]"))
     }
 
-
 def _metadata_link_key(link: Link) -> str:
     return f"link:{link.kind}:{link.tag}"
-
 
 def _metadata_link_value() -> str:
     return "link"
 
-
-
 def _metadata_link_key(link: Link) -> str:
     return f"link:{link.kind}:{link.tag}"
 
-
 def _doc_to_node(doc: Document) -> Node:
-    #### Question for Eric - I already have the document's links deserialized. 
     metadata = doc.metadata.copy()
-    #links = metadata.get(METADATA_LINKS_KEY)
-    #metadata[METADATA_LINKS_KEY] = links
-
-    ### Question for Eric -- is the expecatation that node has the serialized links in the metadata?
     return Node(
         id=doc.id,
         text=doc.page_content,
@@ -92,11 +81,9 @@ def _incoming_links(node: Node | EmbeddedNode) -> set[Link]:
 def _outgoing_links(node: Node | EmbeddedNode) -> set[Link]:
     return {link for link in node.links if link.direction in ["out", "bidir"]}
 
-
 # endregion
 
 # region Langchain Document manipulation
-
 
 def _build_docs_from_texts(
     texts: List[str],
@@ -115,7 +102,6 @@ def _build_docs_from_texts(
         docs.append(doc)
     return docs
 
-
 def _add_ids_to_docs(
     docs: List[Document],
     ids: Optional[List[str]] = None,
@@ -124,7 +110,6 @@ def _add_ids_to_docs(
         for doc, doc_id in zip(docs, ids):
             doc.id = doc_id
     return docs
-
 
 # endregion
 
@@ -230,6 +215,7 @@ class OpenSearchGraphVectorStore(GraphVectorStore):
     @property
     @override
     def embeddings(self) -> Embeddings | None:
+        
         return self.embedding
 
     # region Injestion Methods
@@ -375,12 +361,97 @@ class OpenSearchGraphVectorStore(GraphVectorStore):
                 )
             )
 
-    def get_documents(self, k: int = 10) -> List[Document]:
-        """Retrieve and process k documents from OpenSearch."""
+    @override
+    def similarity_search_by_vector(
+        self, query_vector: list[float], k: int = 4, **kwargs: Any
+    ) -> List[Document]:
+        """Perform a similarity search on the OpenSearch vector store.
+
+        Args:
+            query (str): The query string to search for similar documents.
+            k (int, optional): The number of top similar documents to return. Defaults to 4.
+            **kwargs (Any): Additional keyword arguments.
+
+        Returns:
+            List[Document]: A list of documents that are most similar to the query.
+
+        """
+        search_type = kwargs.get("search_type", "knn")
+        vector_field = kwargs.get("vector_field", "vector_field")
+        index_name = kwargs.get("index_name", self.index_name)
+        text_field = kwargs.get("text_field", "text")
+        metadata_field = kwargs.get("metadata_field", "metadata")
+        query = {
+            "size": k,
+            "query": {search_type: {vector_field: {"vector": query_vector, "k": k}}},
+        }         
+
+        # Execute the synchronous search
+        response = self.os_vector_store.client.search(
+            index=self.index_name,  body=query, size=k
+        )
+        hits = response["hits"]["hits"]
+
+        # Generate and return Document objects from the search results
         return [
-            self._restore_links(doc)
-            for doc in self.os_vector_store.similarity_search(query="*", k=k)
+            self._restore_links(
+                Document(
+                    id=hit["_id"],
+                    page_content=hit["_source"][text_field],
+                    metadata=hit["_source"][metadata_field],
+                )
+            )
+            for hit in hits
         ]
+
+    @override
+    async def asimilarity_search_by_vector(
+        self,
+        query_vector: list[float],
+        k: int = 4,
+        filter: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> list[Document]:
+        """Retrieve documents from this graph store.
+
+        Args:
+            query: The query string.
+            k: The number of Documents to return. Defaults to 4.
+            filter: Optional metadata to filter the results.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            Collection of retrieved documents.
+
+        """
+        search_type = kwargs.get("search_type", "knn")
+        vector_field = kwargs.get("vector_field", "vector_field")
+        index_name = kwargs.get("index_name", self.index_name)
+        text_field = kwargs.get("text_field", "text")
+        metadata_field = kwargs.get("metadata_field", "metadata")
+
+        # Define the search query
+        query = {
+            "size": k,
+            "query": {search_type: {vector_field: {"vector": query_vector, "k": k}}},
+        }
+
+        # Perform the asynchronous search
+        response = await self.os_vector_store.async_client.search(
+            index=index_name, body=query
+        )
+
+        hits = response["hits"]["hits"]
+
+        for hit in hits:
+            yield self._restore_links(
+                Document(
+                    id=hit["_id"],
+                    page_content=hit["_source"][text_field],
+                    metadata=hit["_source"][metadata_field],
+                )
+            )
+
 
     def from_texts(self, texts: List[str]) -> None:
         """Create nodes from texts and add them to the vector store."""
@@ -585,35 +656,6 @@ class OpenSearchGraphVectorStore(GraphVectorStore):
             }
         }
         
-        # query = {
-        #     "size": k,
-        #     "query": {
-        #         "bool": {
-        #             "filter": [
-        #                 {
-        #                     "term": {
-        #                         f"{metadata_field}": metadata_value  # Metadata filtering
-        #                     }
-        #                 }
-        #             ],
-        #             "must": [
-        #                 {
-        #                     "script_score": {
-        #                         "query": {"match_all": {}},
-        #                         "script": {
-        #                             "source": "cosineSimilarity(params.query_vector, doc[params.vector_field]) + 1.0",
-        #                             "params": {
-        #                                 "query_vector": query_vector,
-        #                                 "vector_field": vector_field
-        #                             }
-        #                         }
-        #                     }
-        #                 }
-        #             ]
-        #         }
-        #     }
-        # }
-
         # Execute the synchronous search
         response = self.os_vector_store.client.search(
             index=self.index_name,  body=query, size=k
@@ -632,6 +674,42 @@ class OpenSearchGraphVectorStore(GraphVectorStore):
             for hit in hits
         ]
         
+    def get_documents(
+        self, k: int = 10, **kwargs: Any
+    ) -> Iterable[Document]:
+        """Get k documents from index
+
+        Args:
+            k: Number of documents to retrieve
+
+        Returns:
+            Iterable[Document]: An iterable of Document objects that match the search criteria.
+
+        """
+        
+        text_field = kwargs.get("text_field", "text")
+        metadata_field = kwargs.get("metadata_field", "metadata")
+        
+        # Execute the synchronous search
+        response = self.os_vector_store.client.search(
+            index=self.index_name, 
+            body={"query": {"match_all": {}}},
+            size=k
+        )
+            
+        hits = response["hits"]["hits"]
+
+        # Generate and return Document objects from the search results
+        return [
+            self._restore_links(
+                Document(
+                    id=hit["_id"],
+                    page_content=hit["_source"][text_field],
+                    metadata=hit["_source"][metadata_field],
+                )
+            )
+            for hit in hits
+        ]        
     # endregion
 
     # region Traversal Search Methods
@@ -693,8 +771,8 @@ class OpenSearchGraphVectorStore(GraphVectorStore):
                         outgoing_link=outgoing_link,
                     )
 
-                    docs = self.vector_store.metadata_search(
-                        filter=metadata_filter, n=1000
+                    docs = self.search_by_metadata(
+                        metadata=metadata_filter, k=1000
                     )
 
                     visit_targets(d=d + 1, docs=docs)
@@ -742,10 +820,21 @@ class OpenSearchGraphVectorStore(GraphVectorStore):
                 raise RuntimeError(msg)
         return result_docs
 
-
     # endregion
 
     # region Other Methods
+    def _get_metadata_filter(
+        self,
+        metadata: dict[str, Any] | None = None,
+        outgoing_link: Link | None = None,
+    ) -> dict[str, Any]:
+        if outgoing_link is None:
+            return metadata or {}
+
+        metadata_filter = {} if metadata is None else metadata.copy()
+        metadata_filter[_metadata_link_key(link=outgoing_link)] = _metadata_link_value()
+        return metadata_filter
+  
     def _truncate_index(self) -> None:
         """Delete all documents in the index."""
         self.os_vector_store.client.delete_by_query(
