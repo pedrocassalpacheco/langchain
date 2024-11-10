@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ContentGraph:
-    """A class used to represent a Content Graph.
+    """A class used to represent a Content Graph. It can be populated with LangChain Documents or from a PDF file
 
     Attributes:
     name : str
@@ -31,31 +31,45 @@ class ContentGraph:
     """
     
     def __init__(
+
         self, name: str, metadata: Optional[Dict[str, Union[str, int]]] = None
     ) -> None:
+        """Initialize a ContentGraph instance.
 
+        Args:
+            name (str): The name of the content graph.
+            metadata (Optional[Dict[str, Union[str, int]]], optional): Metadata associated with the content graph. Defaults to None.
+
+        Attributes:
+            name (str): The name of the content graph.
+            graph (List[Document]): A list to store nodes as LangChain Documents.
+            root (Document): The root document of the content graph.
+            infered_parent (Document): The inferred parent document.
+            infer_hierarchy (bool): A flag to indicate whether to infer hierarchy. Defaults to True.
+            element_handlers (dict): A dictionary mapping element types to their respective handler methods.
+        """
         self.name: str = name
         self.graph: List[Document] = []  # Store nodes as LangChain Documents
         self.root: Document = None
         self.infered_parent: Document = None
         self.infer_hierarchy: bool = True
         self.element_handlers = {
-            "Formula": self.handle_formula,
-            "FigureCaption": self.handle_figure_caption,
-            "NarrativeText": self.handle_narrative_text,
-            "ListItem": self.handle_list_item,
-            "Title": self.handle_title,
-            "Address": self.handle_address,
-            "EmailAddress": self.handle_email_address,
-            "Image": self.handle_image,
-            "PageBreak": self.handle_page_break,
-            "Table": self.handle_table,
-            "Header": self.handle_header,
-            "Footer": self.handle_footer,
-            "CodeSnippet": self.handle_code_snippet,
-            "PageNumber": self.handle_page_number,
-            "Text": self.handle_text,
-            "UncategorizedText": self.handle_uncategorized_text,
+            "Formula": self._handle_formula,
+            "FigureCaption": self._handle_figure_caption,
+            "NarrativeText": self._handle_narrative_text,
+            "ListItem": self._handle_list_item,
+            "Title": self._handle_title,
+            "Address": self._handle_address,
+            "EmailAddress": self._handle_email_address,
+            "Image": self._handle_image,
+            "PageBreak": self._handle_page_break,
+            "Table": self._handle_table,
+            "Header": self._handle_header,
+            "Footer": self._handle_footer,
+            "CodeSnippet": self._handle_code_snippet,
+            "PageNumber": self._handle_page_number,
+            "Text": self._handle_text,
+            "UncategorizedText": self._handle_uncategorized_text,
         }
 
     def __repr__(self):
@@ -125,7 +139,7 @@ class ContentGraph:
                 element_type = type(element).__name__
                 # handler = self.element_handlers.get(element_type)
                 doc = self.element_to_document(element)
-                self.graph.append(self.handle_hierarchy(element_type, doc))
+                self.graph.append(self._handle_hierarchy(element_type, doc))
 
                 # if handler:
                 # handler(element)
@@ -140,6 +154,7 @@ class ContentGraph:
                 break
 
         return None
+    
     def fromLangChainDocuments(
         self,
         documents: List[Document],
@@ -170,7 +185,7 @@ class ContentGraph:
             try:
                 # Extract the element type from the class name
                 element_type = doc.metadata["type"]
-                doc = self.handle_hierarchy(element_type, doc)
+                doc = self._handle_hierarchy(element_type, doc)
                 self.graph.append(doc)
 
             except Exception as e:
@@ -181,88 +196,89 @@ class ContentGraph:
                 break
 
         return None
-    def handle_formula(self, element: Element) -> None:
+    #region Element Handlers
+    def _handle_formula(self, element: Element) -> None:
         doc = self.element_to_document(element)
         self.graph.append(self.add_hierarchy(doc))
         return
 
-    def handle_figure_caption(self, element: Element) -> None:
+    def _handle_figure_caption(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_narrative_text(self, element: Element) -> None:
+    def _handle_narrative_text(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_text(self, element: Element) -> None:
+    def _handle_text(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_list_item(self, element: Element) -> None:
+    def _handle_list_item(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_title(self, element: Element) -> None:
+    def _handle_title(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_address(self, element: Element) -> None:
+    def _handle_address(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_email_address(self, element: Element) -> None:
+    def _handle_email_address(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_image(self, element: Element) -> None:
+    def _handle_image(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_page_break(self, element: Element) -> None:
+    def _handle_page_break(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_table(self, element: Element) -> None:
+    def _handle_table(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_header(self, element: Element) -> None:
+    def _handle_header(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_footer(self, element: Element) -> None:
+    def _handle_footer(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_code_snippet(self, element: Element) -> None:
+    def _handle_code_snippet(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_page_number(self, element: Element) -> None:
+    def _handle_page_number(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
-    def handle_uncategorized_text(self, element: Element) -> None:
+    def _handle_uncategorized_text(self, element: Element) -> None:
         self.graph.append(self.element_to_document(element))
         self.handle_hierarchy(element)
         return
 
     # Handles element hierarchy - TODO: Refactor
-    def handle_hierarchy(self, element_type: str, doc: Document) -> Document:
+    def _handle_hierarchy(self, element_type: str, doc: Document) -> Document:
         """Figure out the hierarchy of the document based on the element type. Please see langchain_community/graph_vectorstores/link.py for details."""
         if element_type == "Title":
             # From root to title
@@ -294,7 +310,8 @@ class ContentGraph:
             add_links(doc, Link.incoming(kind=element_type, tag=self.infered_parent.id))
 
         return doc
-
+    #endregion
+    
     def documents_to_nx(self):
         documents_to_networkx(self.graph)
 

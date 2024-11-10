@@ -125,7 +125,7 @@ class TestOpenSearchGraphVectorStore:
             populated_graph_vector_store: OpenSearchGraphVectorStore,
         ) -> None:
         """Simple (non-graph) similarity search on a graph vector g_store."""
-        ss_response = populated_graph_vector_store.similarity_search(query_text="[2, 10]", k=2)
+        ss_response = populated_graph_vector_store.similarity_search(query="[2, 10]", k=2)
         ss_labels = [doc.metadata["label"] for doc in ss_response]
         assert ss_labels == ["AR", "A0"]
         
@@ -245,26 +245,25 @@ class TestOpenSearchGraphVectorStore:
         }
         assert ts_labels == {"AR", "A0", "BR", "B0", "TR", "T0"}
 
-    # async def test_gvs_traversal_search_async(
-    #     self,
-    #     populated_graph_vector_store_d2: CassandraGraphVectorStore,
-    # ) -> None:
-    #     """Graph traversal search on a graph vector store."""
-    #     g_store = populated_graph_vector_store_d2
-    #     ts_labels = set()
-    #     async for doc in g_store.atraversal_search(query="[2, 10]", k=2, depth=2):
-    #         ts_labels.add(doc.metadata["label"])
-    #     # this is a set, as some of the internals of trav.search are set-driven
-    #     # so ordering is not deterministic:
-    #     assert ts_labels == {"AR", "A0", "BR", "B0", "TR", "T0"}
+    async def test_traversal_search_async(
+        self,
+        populated_graph_vector_store: OpenSearchGraphVectorStore,
+    ) -> None:
+        """Graph traversal search on a graph vector store."""
+        ts_labels = set()
+        async for doc in populated_graph_vector_store.atraversal_search(query="[2, 10]", k=2, depth=2):
+            ts_labels.add(doc.metadata["label"])
+        # this is a set, as some of the internals of trav.search are set-driven
+        # so ordering is not deterministic:
+        assert ts_labels == {"AR", "A0", "BR", "B0", "TR", "T0"}
 
-    #     # verify the same works as a retriever
-    #     retriever = g_store.as_retriever(
-    #         search_type="traversal", search_kwargs={"k": 2, "depth": 2}
-    #     )
+        # verify the same works as a retriever
+        retriever = populated_graph_vector_store.as_retriever(
+            search_type="traversal", search_kwargs={"k": 2, "depth": 2}
+        )
 
-    #     ts_labels = {
-    #         doc.metadata["label"]
-    #         for doc in await retriever.aget_relevant_documents(query="[2, 10]")
-    #     }
-    #     assert ts_labels == {"AR", "A0", "BR", "B0", "TR", "T0"}
+        ts_labels = {
+            doc.metadata["label"]
+            for doc in await retriever.aget_relevant_documents(query="[2, 10]")
+        }
+        assert ts_labels == {"AR", "A0", "BR", "B0", "TR", "T0"}
